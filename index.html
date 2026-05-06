@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pato Cloud | Workspace</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='si.css') }}">
+    <link rel="stylesheet" href="si.css">
+</head>
+<body>
+
+    <header class="main-header">
+        <div class="brand"><span class="logo-mark">P</span> Pato Cloud</div>
+        <div class="search-wrapper">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="search-input" placeholder="Buscar en la nube..." onkeyup="searchFiles()">
+        </div>
+        <div class="header-right">
+            <a href="/logout" style="text-decoration: none; margin-right: 15px; font-size: 0.8rem; color: #888;">Cerrar Sesión</a>
+            <div class="user-profile">
+                <div class="status-online"></div>
+            </div>
+        </div>
+    </header>
+
+    <div class="app-container">
+        <aside class="sidebar">
+            <input type="file" id="file-input" style="display: none;" onchange="uploadFile()">
+            <button class="btn-upload" onclick="document.getElementById('file-input').click()">＋ Subir Nuevo</button>
+
+            <nav class="main-nav">
+                <p class="section-label">Biblioteca</p>
+                <a href="#" class="nav-link" id="btn-recientes" onclick="showSection('recientes')">🕒 Recientes</a>
+                <a href="#" class="nav-link" id="btn-documentos" onclick="showSection('documentos')">📄 Documentos</a>
+                <a href="#" class="nav-link" id="btn-imagenes" onclick="showSection('imagenes')">🖼️ Imágenes</a>
+                <a href="#" class="nav-link" id="btn-video" onclick="showSection('video')">🎬 Videos</a>
+                <a href="#" class="nav-link" id="btn-musica" onclick="showSection('musica')">🎵 Música</a>
+                <a href="#" class="nav-link" id="btn-otros" onclick="showSection('otros')">📦 Otros</a>
+
+                <p class="section-label">Filtros</p>
+                <a href="#" class="nav-link" id="btn-destacados" onclick="showSection('destacados')">⭐ Destacados</a>
+                <a href="#" class="nav-link" id="btn-papelera" onclick="showSection('papelera')">🗑️ Papelera</a>
+            </nav>
+        </aside>
+
+        <main class="workspace">
+            <div class="workspace-card">
+                <div class="view-header">
+                    <div class="breadcrumb">Mi Unidad / <strong id="current-section-title">Recientes</strong></div>
+                </div>
+                <div id="file-display" class="file-grid"></div>
+            </div>
+        </main>
+
+        <aside class="inspector">
+            <div class="preview-box" id="ins-preview">
+                <span id="ins-icon">📁</span>
+            </div>
+
+            <h3 id="ins-name">Selecciona un archivo</h3>
+
+            <div class="details-list">
+                <div class="detail-item"><span>Tipo:</span> <strong id="ins-type">-</strong></div>
+                <div class="detail-item"><span>Tamaño:</span> <strong id="ins-size">-</strong></div>
+            </div>
+
+            <a id="link-dl" href="#" style="text-decoration: none;">
+                <button class="btn-download-action" id="btn-dl" style="display:none;">⬇️ Descargar archivo</button>
+            </a>
+
+            <button class="btn-delete-action" id="btn-delete" style="display:none;" onclick="deleteSelectedFile()">
+                🗑️ Eliminar archivo
+            </button>
+        </aside>
+    </div>
+
+    <script>
+        const data = {{ data|tojson }};
+        let currentSection = 'recientes';
+        let selectedFile = null;
+
+        function uploadFile() {
+            const fileInput = document.getElementById('file-input');
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            fetch('/subir', {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => res.json())
+            .then(result => {
+                if (result.success) {
+                    location.reload();
+                } else {
+                    alert('No se pudo subir el archivo');
+                }
+            })
+            .catch(() => alert('Error al subir'));
+        }
+
+        function showSection(section) {
+            currentSection = section;
+            const container = document.getElementById('file-display');
+            container.innerHTML = '';
+
+            document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+            const activeBtn = document.getElementById('btn-' + section);
+            if (activeBtn) activeBtn.classList.add('active');
+
+            const nombresBonitos = {
+                recientes: 'Recientes',
+                documentos: 'Documentos',
+                imagenes: 'Imágenes',
+                video: 'Videos',
+                musica: 'Música',
+                otros: 'Otros',
+                destacados: 'Destacados',
+                papelera: 'Papelera'
+            };
+
+            document.getElementById('current-section-title').innerText = nombresBonitos[section] || section;
+
+            if (!data[section] || data[section].length === 0) {
+                container.innerHTML = '<p style="color: #bbb; grid-column: 1/-1; text-align: center; margin-top: 40px;">No hay archivos en esta sección</p>';
+                return;
+            }
+
+            renderFiles(data[section]);
+        }
+
+        function renderFiles(fileList) {
+            const container = document.getElementById('file-display');
+            container.innerHTML = '';
+
+            fileList.forEach(file => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.onclick = () => updateInspector(file);
+
+                let previewContent = '';
+                if (file.is_image && file.preview_url) {
+                    previewContent = `<img src="${file.preview_url}" alt="${file.name}" style="width:100%; height:100%; object-fit:cover; border-radius:12px;">`;
+                } else {
+                    previewContent = `<div class="card-preview">${file.icon}</div>`;
+                }
+
+                card.innerHTML = `
+                    <div class="card-media" style="width:100%; height:120px; display:flex; align-items:center; justify-content:center; overflow:hidden; border-radius:12px; background:#111827;">
+                        ${previewContent}
+                    </div>
+                    <span class="name" title="${file.name}">${file.name}</span>
+                    <span class="info">${file.size}</span>
+                `;
+
+                container.appendChild(card);
+            });
+        }
+
+        function searchFiles() {
+            const query = document.getElementById('search-input').value.toLowerCase();
+            const sectionFiles = data[currentSection] || [];
+            const filtered = sectionFiles.filter(f => f.name.toLowerCase().includes(query));
+            renderFiles(filtered);
+        }
+
+        function updateInspector(file) {
+            selectedFile = file;
+
+            document.getElementById('ins-name').innerText = file.name;
+            document.getElementById('ins-type').innerText = file.type;
+            document.getElementById('ins-size').innerText = file.size;
+
+            const previewBox = document.getElementById('ins-preview');
+
+            if (file.is_image && file.preview_url) {
+                previewBox.innerHTML = `<img src="${file.preview_url}" alt="${file.name}" style="max-width:100%; max-height:220px; object-fit:contain; border-radius:12px;">`;
+            } else {
+                previewBox.innerHTML = `<span id="ins-icon">${file.icon}</span>`;
+            }
+
+            document.getElementById('btn-dl').style.display = 'block';
+            document.getElementById('link-dl').href = '/descargar/' + encodeURIComponent(file.name);
+
+            document.getElementById('btn-delete').style.display = 'block';
+        }
+
+        function deleteSelectedFile() {
+            if (!selectedFile) return;
+
+            const confirmacion = confirm(`¿Seguro que quieres eliminar "${selectedFile.name}"?`);
+            if (!confirmacion) return;
+
+            fetch('/eliminar/' + encodeURIComponent(selectedFile.name), {
+                method: 'POST'
+            })
+            .then(res => res.json())
+            .then(result => {
+                if (result.success) {
+                    alert('Archivo eliminado correctamente');
+                    location.reload();
+                } else {
+                    alert('No se pudo eliminar el archivo');
+                }
+            })
+            .catch(() => alert('Error al eliminar'));
+        }
+
+        window.onload = () => showSection('recientes');
+    </script>
+</body>
+</html> 
